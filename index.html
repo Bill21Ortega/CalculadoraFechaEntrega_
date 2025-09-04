@@ -20,13 +20,15 @@
       <form id="calcForm" novalidate>
         <div class="field">
           <label for="country">País</label>
-          <select id="country" required>
+        <select id="country" required>
+            <option value="" disabled selected>Selecciona un país</option>
             <option value="Uruguay">Uruguay</option>
             <option value="Costa Rica">Costa Rica</option>
             <option value="Peru">Perú</option>
             <option value="Ecuador">Ecuador</option>
             <option value="Argentina">Argentina</option>
-          </select>
+        </select>
+
         </div>
 
         <div class="field">
@@ -36,7 +38,8 @@
 
         <div class="field">
           <label for="bizDays">Días hábiles</label>
-          <input id="bizDays" type="number" min="1" step="1" placeholder="Ej. 11" required />
+          <input id="bizDays" type="number" min="1" max="75" step="1" placeholder="Ej. 11" required />
+
         </div>
 
         <div class="actions">
@@ -51,7 +54,7 @@
   </main>
 
   <footer>
-    Demo estática. Los feriados se cargan desde <code>feriados.json</code> (se agrega en el siguiente paso).
+    Demo de calculadora de fecha de entrega
   </footer>
 
   <script>
@@ -155,13 +158,11 @@
         }
       });
 
-      btnClear.addEventListener('click', () => {
-        document.getElementById('purchaseDate').value = '';
-        document.getElementById('bizDays').value = '';
-        document.getElementById('purchaseDate').focus();
+     btnClear.addEventListener('click', () => {
+        form.reset(); // 🔥 Resetea todo el formulario a su estado inicial
         warn.style.display = 'none';
         resultBox.style.display = 'none';
-      });
+    });
     });
   </script>
   <script>
