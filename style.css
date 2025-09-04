@@ -19,3 +19,4 @@ footer { text-align:center; color:#777; font-size:12px; padding:20px 0 30px; }
 .logo-brand { position:fixed; bottom:15px; right:15px; width:120px; opacity:0.9; }
 @media (max-width:640px) { form { grid-template-columns:1fr; } }
 .logo-top { position:absolute; top:10px; left:10px; height:40px; z-index:10; }
+@media (max-width: 640px) { .logo-top, .logo-bottom { display:none; } }
