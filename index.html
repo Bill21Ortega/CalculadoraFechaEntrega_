@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#e30613" />
+  <title>📦 CALCULADORA DE FECHA DE ENTREGA 📦</title>
+  <link rel="stylesheet" href="style.css" />
+
+</head>
+<body>
+  <header>📦 CALCULADORA DE FECHA DE ENTREGA 📦</header>
+
+  <main class="container" role="main">
+    <div class="content">
+      <h1>Completa los datos</h1>
+      <p class="helper">Cuenta <strong>días hábiles</strong> desde la fecha de compra, saltando fines de semana y los feriados del país seleccionado.</p>
+
+      <form id="calcForm" novalidate>
+        <div class="field">
+          <label for="country">País</label>
+          <select id="country" required>
+            <option value="Uruguay">Uruguay</option>
+            <option value="Costa Rica">Costa Rica</option>
+            <option value="Peru">Perú</option>
+            <option value="Ecuador">Ecuador</option>
+            <option value="Argentina">Argentina</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="purchaseDate">Fecha de compra</label>
+          <input id="purchaseDate" type="date" required />
+        </div>
+
+        <div class="field">
+          <label for="bizDays">Días hábiles</label>
+          <input id="bizDays" type="number" min="1" step="1" placeholder="Ej. 11" required />
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="primary">Calcular entrega</button>
+          <button type="button" id="btnClear" class="ghost" aria-label="Limpiar">Limpiar</button>
+        </div>
+
+        <div id="warn" class="warn" role="alert"></div>
+        <div id="result" class="result"><strong>Fecha estimada:</strong> <span id="outDate">--/--/----</span></div>
+      </form>
+    </div>
+  </main>
+
+  <footer>
+    Demo estática. Los feriados se cargan desde <code>feriados.json</code> (se agrega en el siguiente paso).
+  </footer>
+
+  <script>
+    // ---- Utilidades de fecha ----
+    function pad(n){ return String(n).padStart(2,'0'); }
+    function toISODate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+    function fromInputDate(v){ // evita problemas de zona horaria creando la fecha al mediodía local
+      if(!v) return null; const [y,m,d] = v.split('-').map(Number); return new Date(y, (m-1), d, 12, 0, 0);
+    }
+    function normalizeKey(s){ return (s||'').normalize('NFD').replace(/[^\p{Letter}\p{Number}]+/gu,'').toUpperCase(); }
+
+    // ---- Estado ----
+    const HOLIDAYS = new Map(); // clave país normalizado -> Set(YYYY-MM-DD)
+    let holidaysLoaded = false;
+
+    async function loadHolidays(){
+      const warn = document.getElementById('warn');
+      try {
+        const res = await fetch('feriados.json', { cache: 'no-store' });
+        if(!res.ok) throw new Error('No se pudo cargar feriados.json');
+        const data = await res.json();
+        for(const key in data){
+          const norm = normalizeKey(key);
+          HOLIDAYS.set(norm, new Set(data[key]));
+        }
+        holidaysLoaded = true;
+        warn.style.display = 'none';
+      } catch(err){
+        warn.textContent = 'Aviso: feriados.json no está disponible todavía. Se calculará solo con fines de semana.';
+        warn.style.display = 'block';
+      }
+    }
+
+    function isHoliday(date, country){
+      const set = HOLIDAYS.get(normalizeKey(country));
+      if(!set) return false; // si no hay lista, no bloquea
+      return set.has(toISODate(date));
+    }
+
+    function computeDelivery(startDate, bizDays, country){
+      if(!(startDate instanceof Date) || isNaN(startDate)) throw new Error('Fecha inválida');
+      if(!Number.isFinite(bizDays) || bizDays <= 0) throw new Error('Días hábiles inválidos');
+
+      let current = new Date(startDate.getTime());
+      current.setDate(current.getDate() + 1); // inicia al día siguiente
+
+      let remaining = Math.trunc(bizDays);
+      let guard = 0; // evita loops infinitos en caso extremo
+      while(remaining > 0 && guard < 5000){
+        const dow = current.getDay(); // 0=dom,6=sáb
+        const weekend = (dow === 0 || dow === 6);
+        const holiday = isHoliday(current, country);
+        if(!weekend && !holiday){ remaining--; }
+        if(remaining > 0) current.setDate(current.getDate() + 1);
+        guard++;
+      }
+      return current; // fecha final cuando remaining llega a 0
+    }
+
+    function formatLongEs(date){
+      return date.toLocaleDateString('es-419', { day:'2-digit', month:'long', year:'numeric' });
+    }
+
+    // ---- Hook UI ----
+    document.addEventListener('DOMContentLoaded', () => {
+      loadHolidays();
+
+      const form = document.getElementById('calcForm');
+      const out = document.getElementById('outDate');
+      const resultBox = document.getElementById('result');
+      const warn = document.getElementById('warn');
+      const btnClear = document.getElementById('btnClear');
+
+      form.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        warn.style.display = 'none';
+        resultBox.style.display = 'none';
+
+        const country = document.getElementById('country').value;
+        const dateStr = document.getElementById('purchaseDate').value;
+        const daysStr = document.getElementById('bizDays').value;
+
+        if(!country || !dateStr || !daysStr){
+          warn.textContent = 'Por favor completa todos los campos.';
+          warn.style.display = 'block';
+          return;
+        }
+
+        const startDate = fromInputDate(dateStr);
+        const bizDays = Number(daysStr);
+
+        try{
+          const delivery = computeDelivery(startDate, bizDays, country);
+          out.textContent = formatLongEs(delivery);
+          resultBox.style.display = 'block';
+        } catch(err){
+          warn.textContent = 'Error: ' + err.message;
+          warn.style.display = 'block';
+        }
+      });
+
+      btnClear.addEventListener('click', () => {
+        document.getElementById('purchaseDate').value = '';
+        document.getElementById('bizDays').value = '';
+        document.getElementById('purchaseDate').focus();
+        warn.style.display = 'none';
+        resultBox.style.display = 'none';
+      });
+    });
+  </script>
+</body>
+</html>
