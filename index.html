@@ -6,12 +6,11 @@
   <meta name="theme-color" content="#e30613" />
   <title>📦 CALCULADORA DE FECHA DE ENTREGA 📦</title>
   <link rel="stylesheet" href="style.css" />
-<!-- prueba de commit -->
-
 </head>
 <body>
-    <img src="logo-tm-white.webp" alt="Logo Tiendamia" class="logo-top">
-    <header>📦 CALCULADORA DE FECHA DE ENTREGA 📦</header>
+  <img src="logo-tm-white.webp" alt="Logo Tiendamia" class="logo-top">
+  <header>📦 CALCULADORA DE FECHA DE ENTREGA 📦</header>
+
   <main class="container" role="main">
     <div class="content">
       <h1>Completa los datos</h1>
@@ -20,15 +19,14 @@
       <form id="calcForm" novalidate>
         <div class="field">
           <label for="country">País</label>
-        <select id="country" required>
+          <select id="country" required>
             <option value="" disabled selected>Selecciona un país</option>
             <option value="Uruguay">Uruguay</option>
             <option value="Costa Rica">Costa Rica</option>
             <option value="Peru">Perú</option>
             <option value="Ecuador">Ecuador</option>
             <option value="Argentina">Argentina</option>
-        </select>
-
+          </select>
         </div>
 
         <div class="field">
@@ -39,7 +37,6 @@
         <div class="field">
           <label for="bizDays">Días hábiles</label>
           <input id="bizDays" type="number" min="1" max="75" step="1" placeholder="Ej. 11" required />
-
         </div>
 
         <div class="actions">
@@ -48,7 +45,9 @@
         </div>
 
         <div id="warn" class="warn" role="alert"></div>
-        <div id="result" class="result"><strong>Fecha estimada:</strong> <span id="outDate">--/--/----</span></div>
+        <div id="result" class="result">
+          <strong>Fecha estimada:</strong> <span id="outDate">--/--/----</span>
+        </div>
       </form>
     </div>
   </main>
@@ -57,272 +56,113 @@
     Demo de calculadora de fecha de entrega
   </footer>
 
+  <img src="TiendamiaLogo.png" alt="Tiendamia logo" class="logo-brand">
+
   <script>
-    // ---- Utilidades de fecha ----
+    // ---- Utilidades ----
     function pad(n){ return String(n).padStart(2,'0'); }
     function toISODate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
-    function fromInputDate(v){ // evita problemas de zona horaria creando la fecha al mediodía local
-      if(!v) return null; const [y,m,d] = v.split('-').map(Number); return new Date(y, (m-1), d, 12, 0, 0);
+    function fromInputDate(v){
+      if(!v) return null;
+      const [y,m,d] = v.split('-').map(Number);
+      return new Date(y, m-1, d, 12, 0, 0); // siempre al mediodía local
     }
-    function normalizeKey(s){ return (s||'').normalize('NFD').replace(/[^\p{Letter}\p{Number}]+/gu,'').toUpperCase(); }
 
-    // ---- Estado ----
-    const HOLIDAYS = new Map(); // clave país normalizado -> Set(YYYY-MM-DD)
-    let holidaysLoaded = false;
-
-    async function loadHolidays(){
-      const warn = document.getElementById('warn');
+    // ---- Cargar feriados ----
+    let feriadosData = {};
+    async function cargarFeriados() {
       try {
-        const res = await fetch('feriados.json', { cache: 'no-store' });
-        if(!res.ok) throw new Error('No se pudo cargar feriados.json');
-        const data = await res.json();
-        for(const key in data){
-          const norm = normalizeKey(key);
-          HOLIDAYS.set(norm, new Set(data[key]));
-        }
-        holidaysLoaded = true;
-        warn.style.display = 'none';
-     } catch(err){
-  console.warn("No se pudo cargar feriados.json. Se calculará solo con fines de semana.");
-  // warn.textContent = 'Aviso...';
-  // warn.style.display = 'block';
-}
-
-    }
-
-    function isHoliday(date, country){
-      const set = HOLIDAYS.get(normalizeKey(country));
-      if(!set) return false; // si no hay lista, no bloquea
-      return set.has(toISODate(date));
-    }
-
-    function computeDelivery(startDate, bizDays, country){
-      if(!(startDate instanceof Date) || isNaN(startDate)) throw new Error('Fecha inválida');
-      if(!Number.isFinite(bizDays) || bizDays <= 0) throw new Error('Días hábiles inválidos');
-
-      let current = new Date(startDate.getTime());
-      current.setDate(current.getDate() + 1); // inicia al día siguiente
-
-      let remaining = Math.trunc(bizDays);
-      let guard = 0; // evita loops infinitos en caso extremo
-      while(remaining > 0 && guard < 5000){
-        const dow = current.getDay(); // 0=dom,6=sáb
-        const weekend = (dow === 0 || dow === 6);
-        const holiday = isHoliday(current, country);
-        if(!weekend && !holiday){ remaining--; }
-        if(remaining > 0) current.setDate(current.getDate() + 1);
-        guard++;
+        const res = await fetch("feriados.json", { cache: "no-store" });
+        if (!res.ok) throw new Error("No se pudo cargar feriados.json");
+        feriadosData = await res.json();
+      } catch (err) {
+        console.error("❌ Error cargando feriados:", err);
+        feriadosData = {};
       }
-      return current; // fecha final cuando remaining llega a 0
     }
 
-    function formatLongEs(date){
-      return date.toLocaleDateString('es-419', { day:'2-digit', month:'long', year:'numeric' });
+    // ---- Cálculo de entrega ----
+    function calcularEntrega(pais, fechaCompra, diasHabiles) {
+      if (!fechaCompra) throw new Error("Fecha de compra inválida");
+      if (!diasHabiles || diasHabiles <= 0) throw new Error("Días hábiles inválidos");
+
+      const paisNorm = pais.toUpperCase();
+      const fecha = fromInputDate(fechaCompra); // ✅ ahora siempre usamos la función segura
+      let restantes = diasHabiles;
+
+      // Preparar lista de feriados
+      const anio = fecha.getFullYear();
+      const lista = (feriadosData[paisNorm] && feriadosData[paisNorm][anio]) || [];
+      const feriados = new Set(lista.map(d => d));
+
+      // 🚀 Iniciar desde el día siguiente
+      fecha.setDate(fecha.getDate() + 1);
+
+      while (restantes > 0) {
+        const iso = toISODate(fecha);
+        const dow = fecha.getDay(); // 0=domingo, 6=sábado
+        const isWeekend = (dow === 0 || dow === 6);
+        const isHoliday = feriados.has(iso);
+
+        if (!isWeekend && !isHoliday) {
+          restantes--;
+        }
+
+        if (restantes > 0) {
+          fecha.setDate(fecha.getDate() + 1);
+        }
+      }
+
+      return fecha;
     }
 
-    // ---- Hook UI ----
-    document.addEventListener('DOMContentLoaded', () => {
-      loadHolidays();
+    // ---- Conectar con UI ----
+    document.addEventListener("DOMContentLoaded", async () => {
+      await cargarFeriados();
 
-      const form = document.getElementById('calcForm');
-      const out = document.getElementById('outDate');
-      const resultBox = document.getElementById('result');
-      const warn = document.getElementById('warn');
-      const btnClear = document.getElementById('btnClear');
+      const form = document.getElementById("calcForm");
+      const out = document.getElementById("outDate");
+      const warn = document.getElementById("warn");
+      const resultBox = document.getElementById("result");
+      const btnClear = document.getElementById("btnClear");
 
-      form.addEventListener('submit', (ev) => {
+      form.addEventListener("submit", (ev) => {
         ev.preventDefault();
-        warn.style.display = 'none';
-        resultBox.style.display = 'none';
+        warn.style.display = "none";
+        resultBox.style.display = "none";
 
-        const country = document.getElementById('country').value;
-        const dateStr = document.getElementById('purchaseDate').value;
-        const daysStr = document.getElementById('bizDays').value;
+        const pais = document.getElementById("country").value;
+        const fechaStr = document.getElementById("purchaseDate").value;
+        const dias = Number(document.getElementById("bizDays").value);
 
-        if(!country || !dateStr || !daysStr){
-          warn.textContent = 'Por favor completa todos los campos.';
-          warn.style.display = 'block';
+        if (!pais || !fechaStr || !dias) {
+          warn.textContent = "⚠️ Completa todos los campos.";
+          warn.style.display = "block";
           return;
         }
 
-        const startDate = fromInputDate(dateStr);
-        const bizDays = Number(daysStr);
-
-        try{
-          const delivery = computeDelivery(startDate, bizDays, country);
-          out.textContent = formatLongEs(delivery);
-          resultBox.style.display = 'block';
-        } catch(err){
-          warn.textContent = 'Error: ' + err.message;
-          warn.style.display = 'block';
+        try {
+          const fechaEntrega = calcularEntrega(pais, fechaStr, dias);
+          out.textContent = fechaEntrega.toLocaleDateString("es-ES", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+          });
+          resultBox.style.display = "block";
+        } catch (err) {
+          warn.textContent = "❌ Error: " + err.message;
+          warn.style.display = "block";
         }
       });
 
-     btnClear.addEventListener('click', () => {
-        form.reset(); // 🔥 Resetea todo el formulario a su estado inicial
-        warn.style.display = 'none';
-        resultBox.style.display = 'none';
-    });
+      btnClear.addEventListener("click", () => {
+        form.reset();
+        out.textContent = "--/--/----";
+        warn.style.display = "none";
+        resultBox.style.display = "none";
+      });
     });
   </script>
-  <script>
-async function cargarFeriados() {
-  try {
-    const res = await fetch("feriados.json", { cache: "no-store" });
-    if (!res.ok) throw new Error("No se pudo cargar feriados.json");
-    feriadosData = await res.json();
-    console.log("✅ Feriados cargados:", feriadosData);
-  } catch (err) {
-    console.error("❌ Error cargando feriados:", err);
-    feriadosData = {};
-  }
-}
-
-// Ejecutar al cargar la página
-cargarFeriados();
-</script>
-<script>
-async function calcularEntrega(pais, fechaCompra, diasHabiles) {
-  const feriadosData = await cargarFeriados();
-
-  // Normalizar país
-  const paisNorm = pais.toUpperCase();
-
-  if (!feriadosData[paisNorm]) {
-    throw new Error("País no soportado: " + pais);
-  }
-
-  // Tomar año de la fecha de compra
-  let fecha = new Date(fechaCompra);
-  let anio = fecha.getFullYear();
-
-  // Convertir lista de feriados del año en Set para búsqueda rápida
-  const feriados = new Set(
-    (feriadosData[paisNorm][anio] || []).map(d => new Date(d).getTime())
-  );
-
-  // Avanzar día por día hasta cumplir días hábiles
-  let restantes = diasHabiles;
-  while (restantes > 0) {
-    fecha.setDate(fecha.getDate() + 1); // siguiente día
-    const dow = fecha.getDay(); // 0 domingo, 6 sábado
-    const isWeekend = (dow === 0 || dow === 6);
-    const isHoliday = feriados.has(new Date(fecha).getTime());
-    if (!isWeekend && !isHoliday) {
-      restantes--;
-    }
-  }
-
-  return fecha;
-}
-
-// Ejemplo de uso para probar
-(async () => {
-  const resultado = await calcularEntrega("URUGUAY", "2025-08-10", 11);
-  console.log("📅 Fecha de entrega:", resultado.toDateString());
-})();
-</script>
-<script>
-  // ---- Utilidades ----
-  function pad(n){ return String(n).padStart(2,'0'); }
-  function toISODate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
-  function fromInputDate(v){
-    if(!v) return null;
-    const [y,m,d] = v.split('-').map(Number);
-    return new Date(y, (m-1), d, 12, 0, 0); // al mediodía local
-  }
-
-  // ---- Cargar feriados ----
-  let feriadosData = {};
-  async function cargarFeriados() {
-    try {
-      const res = await fetch("feriados.json", { cache: "no-store" });
-      if (!res.ok) throw new Error("No se pudo cargar feriados.json");
-      feriadosData = await res.json();
-      console.log("✅ Feriados cargados:", feriadosData);
-    } catch (err) {
-      console.error("❌ Error cargando feriados:", err);
-      feriadosData = {};
-    }
-  }
-
-  // ---- Cálculo de entrega ----
-  function calcularEntrega(pais, fechaCompra, diasHabiles) {
-    if (!fechaCompra) throw new Error("Fecha de compra inválida");
-    if (!diasHabiles || diasHabiles <= 0) throw new Error("Días hábiles inválidos");
-
-    const paisNorm = pais.toUpperCase();
-    const fecha = new Date(fechaCompra);
-    let restantes = diasHabiles;
-
-    // Preparar lista de feriados
-    const anio = fecha.getFullYear();
-    const lista = (feriadosData[paisNorm] && feriadosData[paisNorm][anio]) || [];
-    const feriados = new Set(lista.map(d => d));
-
-    while (restantes > 0) {
-      fecha.setDate(fecha.getDate() + 1);
-      const iso = toISODate(fecha);
-      const dow = fecha.getDay(); // 0=domingo, 6=sábado
-      const isWeekend = (dow === 0 || dow === 6);
-      const isHoliday = feriados.has(iso);
-      if (!isWeekend && !isHoliday) {
-        restantes--;
-      }
-    }
-
-    return fecha;
-  }
-
-  // ---- Conectar con UI ----
-  document.addEventListener("DOMContentLoaded", async () => {
-    await cargarFeriados();
-
-    const form = document.getElementById("calcForm");
-    const out = document.getElementById("outDate");
-    const warn = document.getElementById("warn");
-    const resultBox = document.getElementById("result");
-    const btnClear = document.getElementById("btnClear");
-
-    form.addEventListener("submit", (ev) => {
-      ev.preventDefault();
-      warn.style.display = "none";
-      resultBox.style.display = "none";
-
-      const pais = document.getElementById("country").value;
-      const fechaStr = document.getElementById("purchaseDate").value;
-      const dias = Number(document.getElementById("bizDays").value);
-
-      if (!pais || !fechaStr || !dias) {
-        warn.textContent = "⚠️ Completa todos los campos.";
-        warn.style.display = "block";
-        return;
-      }
-
-      try {
-        const fechaEntrega = calcularEntrega(pais, fechaStr, dias);
-        out.textContent = fechaEntrega.toLocaleDateString("es-ES", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric"
-        });
-        resultBox.style.display = "block";
-      } catch (err) {
-        warn.textContent = "❌ Error: " + err.message;
-        warn.style.display = "block";
-      }
-    });
-
-    btnClear.addEventListener("click", () => {
-      document.getElementById("purchaseDate").value = "";
-      document.getElementById("bizDays").value = "";
-      out.textContent = "--/--/----";
-      warn.style.display = "none";
-      resultBox.style.display = "none";
-    });
-  });
-</script>
-<img src="TiendamiaLogo.png" alt="Tiendamia logo" class="logo-brand">
 </body>
 </html>
